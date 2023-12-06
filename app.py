@@ -45,8 +45,7 @@ app.secret_key = "abc"
 waterIsToxic = "Clear"
 isFinished = False
 currentBehavior = "Normal"
-cap = cv2.VideoCapture('chaos1.avi')
-
+cap = cv2.VideoCapture("http://192.168.68.112:81/stream")
 def yolo():
     cluster = kmeancluster.kmeans()
     classifier = randomforst.randomforst()
@@ -68,10 +67,7 @@ def yolo():
     mask = np.zeros_like(frame)
     # Needed for saving video
     fps = cap.get(cv2.CAP_PROP_FPS)
-    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-    dt_string = datetime.now().strftime("%H_%M_%S_%d_%m_%y")
     num_seconds = 10
-    video = cv2.VideoWriter('videonormal/' +str(num_seconds*round(fps))+'_'+str(dt_string)+'.avi', fourcc, fps, (fwidth, fheight))
     # Read until video is completed
     buffer = [[]]
     apperance = [[]]
@@ -149,26 +145,13 @@ def yolo():
                 print(frms)
                 print("----------")
                 # cap.set(1,frms)
-                video.write(img)
                 if (frms % (round(fps) * num_seconds) == 0 and frms!=0):
                     result = cluster.classify(mask)
 
                     randomForestResult = (classifier.classify(sortedfish, mask, fps))
                     print(randomForestResult)
 
-                    if (result == 1 or randomForestResult[0] == 1 or randomForestResult[0] == 2):
-                        with open('exceltext/' + str(frms)+'_'+str(dt_string)+ '.csv', 'w', newline='') as file:
-                            writer = csv.writer(file)
-                            writer.writerows(mylist)
-                            # writer.writerows(preproccesing.featuresCalc(mylist))
-                        cv2.imwrite("trajecstest" + str(frms)+'_'+str(dt_string) + ".png", mask)
 
-                        video.release()
-
-                        dt_string = datetime.now().strftime("%H_%M_%S_%d_%m_%y")
-
-                        video = cv2.VideoWriter('videotest/' + str(frms+(num_seconds*round(fps)))+'_'+str(dt_string)+'.avi', fourcc, fps,
-                                                (fwidth, fheight))
                     print("result " + str(result))
                     global currentBehavior
                     if (randomForestResult[0] == 1):
@@ -194,100 +177,14 @@ def yolo():
 
                     label_cnt = 1
                     top = 0
+    frms += 1
 
-                if cv2.waitKey(25) & 0xFF == ord('q'):
-                    break
+    yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
-                # Break the loop
-        else:
-            break
-        frms += 1
-
-    cap.release()
-    cv2.destroyAllWindows()
-    video.release()
-
-@app.route('/', methods = ['GET', 'POST'])
-def login():
-    msg = ''
-    if request.method == 'POST' and 'username' in request.form and 'password' in request.form:
-
-        username = request.form['username']
-        password = request.form['password']
-        mycursor.execute('SELECT * FROM user WHERE username = %s AND password = %s', (username,  password))
-        account = mycursor.fetchone()
-        print(account)
-
-        if account:
-            session['loggedin'] = True
-            session['id'] = account[0]
-            session['username'] = account[1]
-            return redirect(url_for('home'))
-
-        else:
-            msg = 'Incorrect username/password!'
-
-    return render_template('index.html', msg = msg)
-
-@app.route('/pond')
-def pond():
-    # return render_template('home.html', username=session['username'])
-    return render_template('home.html')
-
-
-@app.route('/alert')
-def alert():
-    return render_template('alert.html')
-
-@app.route('/home')
-def home():
-    return render_template('template.html')
-
-@app.route('/stats')
-def stats():
-    return render_template('graphs.html')
-
-
-@app.route('/logout')
-def logout():
-    session.pop('loggedin', None)
-    session.pop('username', None)
-    session.pop('id', None)
-
-    return redirect(url_for('login'))
-
-def get_frame():
-    #cap=cv2.VideoCapture('vid.mp4') #read vid
-    global cap
-    Thread(target = yolo).start()
-    while (cap.isOpened()):
-        retval, im = cap.read()
-        if im is not None and retval:  #retval when false means last frame
-            imgencode=cv2.imencode('.jpg',im)[1]
-            cv2.waitKey(int((1/30)*1000))
-            stringData=imgencode.tostring()
-            yield (b'--frame\r\n'
-                b'Content-Type: text/plain\r\n\r\n'+stringData+b'\r\n')
-        else:
-            break
-            cap.release()
-    global isFinished
-    isFinished = True
-
-
-@app.route('/calc')
-def calc():
-    return Response(get_frame(),mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/getYoloData', methods=['POST', 'GET'])
-def getYoloData():
-    global waterIsToxic, currentBehavior
-    if isFinished:
-        data = {'waterStatus': "Stream is not running", 'currentBehavior': "Stream is not running"}
-    else:
-        data = {'waterStatus': waterIsToxic, 'currentBehavior': currentBehavior}
-    return json.dumps(data)
-
+@app.route('/video')
+def video():
+    return Response(generate_frames(),mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
     app.run(host='localhost', debug=True, threaded=True)
